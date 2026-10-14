@@ -14,10 +14,13 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
-  // Database (PostgreSQL via Prisma + driver adapter).
-  // DATABASE_URL: pooled runtime connection (e.g. PgBouncer/Neon pooler).
+  // Database (Neon PostgreSQL via the pg driver).
+  // DATABASE_URL: Neon pooled connection string ("-pooler" host) used by the
+  // application pool at runtime (src/lib/db.ts).
   DATABASE_URL: optionalEnvString,
-  // DIRECT_URL: unpooled connection used by Prisma CLI (migrations).
+  // DIRECT_URL: Neon direct (non-pooler) endpoint, used only by migrations
+  // (npm run db:migrate) — Neon's recommended connection for schema changes.
+  // Falls back to DATABASE_URL when unset.
   DIRECT_URL: optionalEnvString,
 
   // Cloudflare R2 (S3-compatible object storage). Optional at startup; only

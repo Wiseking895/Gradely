@@ -5,9 +5,6 @@ node_modules/
 dist/
 coverage/
 
-# Generated Prisma client (run `npm run prisma:generate`)
-src/generated/
-
 # Environment files — never commit real credentials
 .env
 .env.*

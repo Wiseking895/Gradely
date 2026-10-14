@@ -1,7 +1,7 @@
 # Gradely — Backend
 
-Node.js + TypeScript + Express API for Gradely, with Prisma ORM for
-PostgreSQL, deployed as a Vercel Function.
+Node.js + TypeScript + Express API for Gradely, talking directly to Neon
+PostgreSQL through the `pg` driver, deployed as a Vercel Function.
 
 > **Status:** Phase 1.5 (deployment-ready foundation). Only a health
 > endpoint exists. School registration, authentication, pupils, teachers,
@@ -10,7 +10,7 @@ PostgreSQL, deployed as a Vercel Function.
 ## Stack
 
 - Node.js 24 (ESM), TypeScript, Express 5
-- Prisma 7 + `@prisma/adapter-pg` (driver adapter) + PostgreSQL
+- Neon PostgreSQL via `pg` (node-postgres) with a lazy shared pool
 - Cloudflare R2 via `@aws-sdk/client-s3` (S3-compatible)
 - Zod for environment validation
 - Helmet + environment-driven CORS
@@ -26,8 +26,8 @@ Import the same Git repository as a **second** Vercel project with:
 
 Vercel detects `src/app.ts`, which default-exports the Express app, and
 serves it as a single Vercel Function. `vercel.json` sets
-`buildCommand: prisma generate` so the Prisma client exists before Vercel
-bundles the function.
+`buildCommand: npm run build` (TypeScript compile — no database, no
+credentials, and no external code generation required).
 
 Set the environment variables below in the Vercel project (Production,
 Preview, Development as appropriate). Never commit real credentials.
@@ -37,8 +37,8 @@ Preview, Development as appropriate). Never commit real credentials.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `CORS_ORIGINS` | Yes (prod) | Comma-separated allowed frontend origins, e.g. `https://your-frontend.vercel.app` |
-| `DATABASE_URL` | Yes (when DB features ship) | **Pooled** PostgreSQL connection used by Prisma Client at runtime |
-| `DIRECT_URL` | Yes (for migrations) | **Unpooled** PostgreSQL connection used by Prisma CLI (`migrate`, `db push`) |
+| `DATABASE_URL` | Yes (when DB features ship) | **Neon pooled** connection string (`-pooler` host) used by the runtime `pg` pool |
+| `DIRECT_URL` | For migrations | **Neon direct** connection string (no `-pooler`) used by `npm run db:migrate`; falls back to `DATABASE_URL` |
 | `NODE_ENV` | Optional | Set by Vercel to `production`; defaults to `development` locally |
 | `PORT` | No | Local dev only; ignored on Vercel |
 | `R2_ACCOUNT_ID` | For storage | Cloudflare account ID |
@@ -54,7 +54,6 @@ The API and `GET /api/health` start **without** database or R2 credentials.
 ```bash
 npm install               # install dependencies
 copy .env.example .env    # then edit values (placeholders only in the example)
-npm run prisma:generate   # required once after install
 npm run dev               # API on http://localhost:4000
 ```
 
@@ -70,34 +69,43 @@ npm start               # run the compiled API (requires npm run build)
 npm run lint            # ESLint
 npm run typecheck       # TypeScript check (no emit)
 npm test                # Vitest + Supertest tests
-npm run prisma:validate # validate prisma/schema.prisma
-npm run prisma:generate # regenerate the Prisma client into src/generated/prisma
+npm run db:migrate      # apply pending SQL migrations (needs DATABASE_URL/DIRECT_URL)
+npm run db:migrate:status # list applied/pending migrations (read-only)
 ```
 
-## Health endpoint
+## Health endpoints
 
 ```
-GET /api/health
+GET /api/health      # liveness — never touches the database
+GET /api/health/db   # database check — read-only SELECT 1
 ```
 
-Returns `200` with service status, environment, and uptime. It deliberately
-does **not** touch the database or R2, so the API starts and answers health
-checks without external services. Access is lazy:
-`getPrisma()` (`src/lib/prisma.ts`) and `getR2Client()` (`src/lib/r2.ts`)
-create their clients on first use only.
+`GET /api/health` returns `200` with service status, environment, and
+uptime. It deliberately does **not** touch the database or R2, so the API
+starts and answers health checks without external services.
 
-## Database (Prisma + PostgreSQL)
+`GET /api/health/db` runs a read-only `SELECT 1` with a short timeout and
+returns `200 {status:"ok", database:"up"}` or a safe
+`503 {status:"unavailable", database:"down"}` — never error details or
+connection strings. Access is lazy: `getDbPool()` (`src/lib/db.ts`) and
+`getR2Client()` (`src/lib/r2.ts`) create their clients on first use only.
 
-- Runtime queries use the **pooled** connection (`DATABASE_URL`) through
-  the `@prisma/adapter-pg` driver adapter — the pattern for Neon, Supabase,
-  and any PgBouncer-style provider on serverless hosts.
-- Prisma CLI/migrations use the **direct** connection (`DIRECT_URL`),
-  configured in `prisma.config.ts` (Prisma 7 replaced `directUrl` in
-  `schema.prisma` with `datasource.url` in the config file).
-- `getPrisma()` returns a module-level singleton reused per warm function
-  instance; a new PrismaClient is never created per request.
-- **Provider choice is pending approval** — no real connection strings are
-  configured and no migrations have been run.
+## Database (Neon PostgreSQL + pg)
+
+- Runtime queries use a **lazy shared `pg` pool** (`src/lib/db.ts`):
+  created on first use from the **pooled** Neon connection (`DATABASE_URL`,
+  `-pooler` host), one pool per warm serverless instance — never a new pool
+  per request.
+- SSL/TLS: Neon requires encryption; `sslmode=require` stays in the
+  connection string and `pg` parses it (treated as full certificate
+  verification in pg 8.23).
+- Migrations are plain SQL files in `backend/migrations/`, applied by
+  `npm run db:migrate` (`src/scripts/migrate.ts`), which connects with the
+  **direct** Neon endpoint (`DIRECT_URL`, falling back to `DATABASE_URL` —
+  Neon's recommendation for schema changes). Applied versions are tracked
+  in `schema_migrations`.
+- No application queries exist yet; no migrations have been created or run
+  against any database. **Do not run migrations without approval.**
 
 ## Cloudflare R2 (file storage)
 
@@ -129,20 +137,16 @@ photographs, generated report PDFs, and other school documents:
 
 ```
 backend/
-  vercel.json            # buildCommand: prisma generate; framework: express
-  prisma.config.ts       # Prisma CLI datasource (DIRECT_URL ?? DATABASE_URL)
-  prisma/schema.prisma   # minimal schema — no domain models yet
+  vercel.json            # buildCommand: npm run build; framework: express
+  migrations/            # SQL migration files (NNNN_description.sql) + docs
   src/
     index.ts             # local server entry (loads env, app.listen)
     app.ts               # Express app + Vercel default export
     config/env.ts        # Zod-validated environment variables
-    lib/prisma.ts        # lazy Prisma client singleton (adapter-pg)
+    lib/db.ts            # lazy shared pg pool (Neon) + DB health probe
     lib/r2.ts            # lazy R2 client + presigned URLs + validation
     middleware/          # 404 + centralized error handling
-    routes/health.ts     # GET /api/health
+    routes/health.ts     # GET /api/health + GET /api/health/db
+    scripts/migrate.ts   # SQL migration runner (npm run db:migrate)
   tests/                 # Vitest tests (health, 404, R2 validation)
 ```
-
-The Prisma client is generated into `src/generated/prisma` (gitignored);
-run `npm run prisma:generate` after a fresh install (Vercel does this via
-`buildCommand`).
