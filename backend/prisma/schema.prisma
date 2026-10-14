@@ -1,0 +1,12 @@
+// Gradely Prisma schema (Phase 1 foundation).
+// The full school data model (schools, users, pupils, teachers, scores,
+// reports) will be introduced in later phases.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

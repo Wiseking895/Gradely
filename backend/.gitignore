@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Generated Prisma client (run `npm run prisma:generate`)
+src/generated/
+
+# Environment files — never commit real credentials
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.idea/
+.DS_Store
+*.sw?
