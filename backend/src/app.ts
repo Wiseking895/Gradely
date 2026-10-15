@@ -3,12 +3,27 @@ import express, { type Express } from 'express'
 import helmet from 'helmet'
 import { env } from './config/env.ts'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.ts'
+import { defaultLoginRateLimiter, type LoginRateLimiter } from './lib/rateLimit.ts'
+import { getDbPool } from './lib/db.ts'
 import { healthRouter } from './routes/health.ts'
+import { createAuthRouter } from './routes/auth.ts'
+import { createSchoolsRouter } from './routes/schools.ts'
+import { createDbAuthService, type AuthService } from './services/auth.ts'
+
+export type AppServices = {
+  auth: AuthService
+  loginRateLimiter: LoginRateLimiter
+}
 
 /**
  * Builds the Express application. No database connection is opened here.
+ * Services can be injected (tests pass an in-memory AuthService); the
+ * default is the Neon-backed implementation with a lazy pool accessor.
  */
-export function createApp(): Express {
+export function createApp(services?: Partial<AppServices>): Express {
+  const authService = services?.auth ?? createDbAuthService(() => getDbPool())
+  const loginRateLimiter = services?.loginRateLimiter ?? defaultLoginRateLimiter
+
   const app = express()
 
   app.disable('x-powered-by')
@@ -19,6 +34,8 @@ export function createApp(): Express {
 
   app.use(helmet())
 
+  // credentials: true so the frontend can send the HttpOnly session cookie
+  // cross-origin; the origin callback still allow-lists exact origins.
   app.use(
     cors({
       origin: (origin, callback) => {
@@ -29,6 +46,7 @@ export function createApp(): Express {
         }
         callback(null, false)
       },
+      credentials: true,
     }),
   )
 
@@ -36,6 +54,11 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: true }))
 
   app.use('/api', healthRouter)
+  app.use(
+    '/api',
+    createAuthRouter({ auth: authService, loginRateLimiter }),
+  )
+  app.use('/api', createSchoolsRouter({ auth: authService }))
 
   app.use(notFoundHandler)
   app.use(errorHandler)

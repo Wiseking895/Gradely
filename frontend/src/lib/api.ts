@@ -54,7 +54,14 @@ export async function apiFetch<T>(
 
   let response: Response
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers })
+    // credentials: 'include' sends the HttpOnly session cookie on
+    // cross-origin production requests (the backend CORS allow-list must
+    // include this frontend's origin).
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    })
   } catch {
     // Network failure, DNS failure, CORS block, etc.
     throw new ApiError('Could not reach the API server', 0)
@@ -91,4 +98,46 @@ export type HealthStatus = {
 
 export const healthApi = {
   get: () => apiFetch<HealthStatus>('/api/health'),
+}
+
+/* --- Auth API ----------------------------------------------------------- */
+
+export type SessionUser = {
+  id: string
+  email: string
+  displayName: string
+  isPlatformAdmin: boolean
+}
+
+export type SchoolRole = 'school_admin' | 'teacher'
+
+export type MembershipSummary = {
+  schoolId: string
+  schoolName: string
+  schoolSlug: string
+  schoolStatus: string
+  role: SchoolRole
+}
+
+export type LoginResponse = {
+  user: SessionUser
+  expiresAt: string
+}
+
+export type MeResponse = {
+  user: SessionUser
+  session: { expiresAt: string }
+  memberships: MembershipSummary[]
+}
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    apiFetch<LoginResponse>('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () =>
+    apiFetch<{ status: string }>('/api/auth/logout', { method: 'POST' }),
+  me: () => apiFetch<MeResponse>('/api/auth/me'),
 }

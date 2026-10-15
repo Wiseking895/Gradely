@@ -29,7 +29,10 @@ without explicit approval.
 
 ## Current state
 
-The directory intentionally starts with **no migration files**. The full
-Gradely school data model is introduced in a later phase; the removed
-schema files contained no models, so no equivalent SQL could be derived
-from them.
+| File | Purpose |
+| --- | --- |
+| `0001_auth_foundation.sql` | Schools, users (scrypt password hashes), school memberships (school-scoped roles), and server-side sessions (SHA-256 token hashes). Platform admin is the `users.is_platform_admin` flag, separate from school roles. |
+
+These files have **not** been run against any database in this phase. Apply
+them to a scratch database first (integration tests run against
+`TEST_DATABASE_URL`), then production only with explicit approval.

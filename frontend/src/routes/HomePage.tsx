@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, School, Sparkles } from 'lucide-react'
+import { BarChart3, LogIn, LogOut, School, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import BrandMark from '../components/BrandMark.tsx'
 import { healthApi } from '../lib/api.ts'
+import { useAuth } from '../lib/authContext.ts'
 
 type ApiStatus = 'checking' | 'online' | 'offline'
 
@@ -67,13 +69,14 @@ const pillars = [
 export default function HomePage() {
   const apiStatus = useApiStatus()
   const apiStatusStyle = apiStatusStyles[apiStatus]
+  const { status: authStatus, user, logout } = useAuth()
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6">
           <BrandMark />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${apiStatusStyle.className}`}
             >
@@ -82,6 +85,37 @@ export default function HomePage() {
             <span className="rounded-full bg-brand-gold/15 px-3 py-1 text-xs font-semibold text-brand-navy">
               Phase 1.5 · Deployment ready
             </span>
+            {authStatus === 'loading' && (
+              <span className="text-xs text-brand-muted" aria-live="polite">
+                Checking session…
+              </span>
+            )}
+            {authStatus === 'anonymous' && (
+              <Link
+                to="/login"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand-navy px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
+              >
+                <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+                Sign in
+              </Link>
+            )}
+            {authStatus === 'authenticated' && user && (
+              <div className="flex items-center gap-2">
+                <span className="hidden max-w-40 truncate rounded-full bg-brand-green/15 px-3 py-1 text-xs font-semibold text-brand-navy sm:inline">
+                  {user.displayName}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void logout()
+                  }}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-brand-navy transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
+                >
+                  <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

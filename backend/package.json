@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:migrate": "tsx src/scripts/migrate.ts",
-    "db:migrate:status": "tsx src/scripts/migrate.ts --status"
+    "db:migrate:status": "tsx src/scripts/migrate.ts --status",
+    "admin:create": "tsx src/scripts/createPlatformAdmin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1151.0",
