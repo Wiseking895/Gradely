@@ -107,6 +107,7 @@ export type SessionUser = {
   email: string
   displayName: string
   isPlatformAdmin: boolean
+  emailVerified: boolean
 }
 
 export type SchoolRole = 'school_admin' | 'teacher'
@@ -130,6 +131,30 @@ export type MeResponse = {
   memberships: MembershipSummary[]
 }
 
+export type RegisterSchoolInput = {
+  schoolName: string
+  schoolSlug: string
+  adminName: string
+  email: string
+  password: string
+}
+
+export type RegisterSchoolResponse = {
+  status: 'verification_sent'
+  user: SessionUser
+  school: { id: string; name: string; slug: string }
+}
+
+export type VerifyEmailResponse = {
+  status: 'verified'
+  user: SessionUser
+}
+
+export type ResendVerificationResponse = {
+  status: 'pending'
+  message: string
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     apiFetch<LoginResponse>('/api/auth/login', {
@@ -140,4 +165,22 @@ export const authApi = {
   logout: () =>
     apiFetch<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   me: () => apiFetch<MeResponse>('/api/auth/me'),
+  registerSchool: (input: RegisterSchoolInput) =>
+    apiFetch<RegisterSchoolResponse>('/api/auth/register-school', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  verifyEmail: (token: string) =>
+    apiFetch<VerifyEmailResponse>('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }),
+  resendVerification: (email: string) =>
+    apiFetch<ResendVerificationResponse>('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }),
 }

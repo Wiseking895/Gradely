@@ -50,8 +50,11 @@ export default function LoginPage() {
     setSubmitting(true)
     setErrors({})
     try {
-      await login(email.trim(), password)
-      navigate('/')
+      const user = await login(email.trim(), password)
+      // Unverified administrators may sign in (so they can see verification
+      // state and request a new link) but are sent to the verification screen
+      // instead of the app; protected school routes still return 403.
+      navigate(user.emailVerified ? '/' : '/verify-email')
     } catch (error) {
       if (isNetworkError(error)) {
         setErrors({
@@ -174,7 +177,16 @@ export default function LoginPage() {
           </button>
 
           <p className="mt-4 text-center text-sm text-brand-muted">
-            Don&apos;t have an account? Contact your school administrator.
+            New to Gradely?{' '}
+            <Link
+              to="/register-school"
+              className="font-medium text-brand-navy underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
+            >
+              Register your school
+            </Link>
+          </p>
+          <p className="mt-1 text-center text-xs text-brand-muted">
+            Teachers: contact your school administrator for access.
           </p>
         </form>
 

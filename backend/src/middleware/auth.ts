@@ -70,6 +70,32 @@ export const requirePlatformAdmin: RequestHandler = (req, _res, next) => {
 }
 
 /**
+ * Blocks protected school features until the account's email is verified
+ * (users.email_verified_at IS NOT NULL). Placed AFTER requireAuth so it only
+ * applies to authenticated sessions; /api/auth/me intentionally stays
+ * reachable so clients can show the verification state and resend UI.
+ * Does not apply to platform-level access checks (bootstrap-created admins
+ * are marked verified by migration 0002 / npm run admin:create).
+ */
+export const requireVerifiedEmail: RequestHandler = (req, _res, next) => {
+  if (!req.auth) {
+    next(new HttpError(401, 'Authentication required'))
+    return
+  }
+  if (!req.auth.user.emailVerified) {
+    next(
+      new HttpError(
+        403,
+        'Email verification required to access school features',
+        'email_verification_required',
+      ),
+    )
+    return
+  }
+  next()
+}
+
+/**
  * Guards state-changing auth endpoints against cross-origin abuse from
  * browsers. Requests without an Origin header (curl, native clients,
  * Supertest) are allowed; browsers always send Origin on cross-origin POSTs.

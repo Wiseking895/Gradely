@@ -1,11 +1,20 @@
 import { Router } from 'express'
-import { authorizeSchoolAccess, createRequireAuth } from '../middleware/auth.ts'
+import {
+  authorizeSchoolAccess,
+  createRequireAuth,
+  requireVerifiedEmail,
+} from '../middleware/auth.ts'
 import type { AuthService } from '../services/auth.ts'
 
 /**
  * School-scoped routes. Every handler derives access from the authenticated
  * user's server-side memberships — a school ID in the URL is only a lookup
  * key and grants nothing by itself.
+ *
+ * All routes additionally require a verified email address
+ * (requireVerifiedEmail): unverified administrators can sign in and reach
+ * /api/auth/me (to see their state and resend), but cannot use protected
+ * school features until they verify.
  */
 export function createSchoolsRouter(deps: { auth: AuthService }): Router {
   const requireAuth = createRequireAuth(deps.auth)
@@ -13,15 +22,20 @@ export function createSchoolsRouter(deps: { auth: AuthService }): Router {
   const schoolsRouter = Router()
 
   /** GET /api/schools/mine — the caller's active memberships only. */
-  schoolsRouter.get('/schools/mine', requireAuth, async (req, res, next) => {
-    try {
-      const session = req.auth!
-      const memberships = await deps.auth.listActiveMemberships(session.user.id)
-      res.status(200).json({ memberships })
-    } catch (error) {
-      next(error)
-    }
-  })
+  schoolsRouter.get(
+    '/schools/mine',
+    requireAuth,
+    requireVerifiedEmail,
+    async (req, res, next) => {
+      try {
+        const session = req.auth!
+        const memberships = await deps.auth.listActiveMemberships(session.user.id)
+        res.status(200).json({ memberships })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
 
   /**
    * GET /api/schools/:schoolId — school details for members (any active
@@ -31,6 +45,7 @@ export function createSchoolsRouter(deps: { auth: AuthService }): Router {
   schoolsRouter.get(
     '/schools/:schoolId',
     requireAuth,
+    requireVerifiedEmail,
     async (req, res, next) => {
       try {
         const session = req.auth!

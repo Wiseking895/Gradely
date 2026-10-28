@@ -23,6 +23,11 @@ const envSchema = z.object({
   // Falls back to DATABASE_URL when unset.
   DIRECT_URL: optionalEnvString,
 
+  // Email transport for the verification flow (src/services/email.ts).
+  // Unset resolves to: production -> 'unavailable' (fail loudly, no vendor
+  // dependency yet), test -> 'memory', development -> 'log'.
+  EMAIL_TRANSPORT: z.enum(['log', 'memory', 'unavailable']).optional(),
+
   // Cloudflare R2 (S3-compatible object storage). Optional at startup; only
   // required when storage features are used. Never sent to the frontend.
   R2_ACCOUNT_ID: optionalEnvString,
@@ -47,6 +52,13 @@ export const env = {
   corsOrigins: parsed.data.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  emailTransport:
+    parsed.data.EMAIL_TRANSPORT ??
+    (parsed.data.NODE_ENV === 'production'
+      ? 'unavailable'
+      : parsed.data.NODE_ENV === 'test'
+        ? 'memory'
+        : 'log'),
 }
 
 export type AppEnv = typeof env

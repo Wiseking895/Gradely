@@ -44,6 +44,7 @@ describe('auth HTTP flow', () => {
       email: 'teacher@school.test',
       displayName: 'Tina Teacher',
       isPlatformAdmin: false,
+      emailVerified: true, // seeds are operator-provisioned (verified)
     })
     expect(response.body.user).not.toHaveProperty('passwordHash')
 
@@ -153,6 +154,53 @@ describe('auth HTTP flow', () => {
     const afterLogout = await agent.get('/api/auth/me')
     expect(afterLogout.status).toBe(401)
     expect(auth.sessionCount()).toBe(1) // revoked, not deleted
+  })
+
+  it('logout revokes the session server-side so the raw cookie cannot be replayed', async () => {
+    await auth.seedUser({
+      email: 'revoked@school.test',
+      password: PASSWORD,
+      displayName: 'Rory Revoked',
+    })
+    const app = createApp({ auth })
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'revoked@school.test', password: PASSWORD })
+    expect(login.status).toBe(200)
+    // Keep ONLY the name=value pair (attributes dropped) so we can replay the
+    // token manually after logout — a cookie jar would hide the defect by
+    // discarding the cleared cookie.
+    const tokenCookie = sessionCookieFrom(login).split(';')[0]
+
+    const logout = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', tokenCookie)
+    expect(logout.status).toBe(200)
+
+    // Clear-cookie attributes must match the ones used when setting it.
+    const cleared = (
+      logout.headers['set-cookie'] as string[] | undefined
+    )?.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`))
+    expect(cleared).toBeDefined()
+    expect(cleared).toContain('HttpOnly')
+    expect(cleared).toContain('SameSite=Lax')
+    expect(cleared).toContain('Path=/')
+    expect(cleared?.toLowerCase()).toContain('expires=')
+
+    // Server-side revocation: the same raw token must now be dead.
+    const replay = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', tokenCookie)
+    expect(replay.status).toBe(401)
+    expect(replay.body.message).toBe('Authentication required')
+
+    // Revoked row is kept for audit; a second logout stays idempotent.
+    expect(auth.sessionCount()).toBe(1)
+    const again = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', tokenCookie)
+    expect(again.status).toBe(200)
   })
 
   it('rate limits repeated failures with 429 and Retry-After', async () => {

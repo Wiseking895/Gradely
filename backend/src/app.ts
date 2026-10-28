@@ -3,26 +3,38 @@ import express, { type Express } from 'express'
 import helmet from 'helmet'
 import { env } from './config/env.ts'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.ts'
-import { defaultLoginRateLimiter, type LoginRateLimiter } from './lib/rateLimit.ts'
+import {
+  defaultLoginRateLimiter,
+  defaultResendRateLimiter,
+  type LoginRateLimiter,
+} from './lib/rateLimit.ts'
 import { getDbPool } from './lib/db.ts'
 import { healthRouter } from './routes/health.ts'
 import { createAuthRouter } from './routes/auth.ts'
 import { createSchoolsRouter } from './routes/schools.ts'
 import { createDbAuthService, type AuthService } from './services/auth.ts'
+import { createEmailService, type EmailService } from './services/email.ts'
 
 export type AppServices = {
   auth: AuthService
   loginRateLimiter: LoginRateLimiter
+  resendRateLimiter: LoginRateLimiter
+  emailService: EmailService
 }
 
 /**
  * Builds the Express application. No database connection is opened here.
- * Services can be injected (tests pass an in-memory AuthService); the
- * default is the Neon-backed implementation with a lazy pool accessor.
+ * Services can be injected (tests pass an in-memory AuthService and a
+ * memory EmailService); the default is the Neon-backed implementation with
+ * a lazy pool accessor plus the env-selected email transport.
  */
 export function createApp(services?: Partial<AppServices>): Express {
   const authService = services?.auth ?? createDbAuthService(() => getDbPool())
   const loginRateLimiter = services?.loginRateLimiter ?? defaultLoginRateLimiter
+  const resendRateLimiter = services?.resendRateLimiter ?? defaultResendRateLimiter
+  const emailService =
+    services?.emailService ??
+    createEmailService(env.emailTransport, { isProduction: env.isProduction })
 
   const app = express()
 
@@ -56,7 +68,12 @@ export function createApp(services?: Partial<AppServices>): Express {
   app.use('/api', healthRouter)
   app.use(
     '/api',
-    createAuthRouter({ auth: authService, loginRateLimiter }),
+    createAuthRouter({
+      auth: authService,
+      loginRateLimiter,
+      resendRateLimiter,
+      emailService,
+    }),
   )
   app.use('/api', createSchoolsRouter({ auth: authService }))
 

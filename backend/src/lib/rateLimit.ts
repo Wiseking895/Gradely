@@ -26,6 +26,11 @@ type Bucket = { count: number; windowStartedAt: number }
 
 export const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10
 export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
+
+// Resend-verification limit: deliberately stricter than login because each
+// accepted attempt triggers an outbound email (cost + mailbox flooding).
+export const RESEND_RATE_LIMIT_MAX_ATTEMPTS = 5
+export const RESEND_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
 const MAX_TRACKED_KEYS = 10_000
 
 export function createLoginRateLimiter(options?: {
@@ -96,3 +101,7 @@ export function createLoginRateLimiter(options?: {
 }
 
 export const defaultLoginRateLimiter = createLoginRateLimiter()
+export const defaultResendRateLimiter = createLoginRateLimiter({
+  maxAttempts: RESEND_RATE_LIMIT_MAX_ATTEMPTS,
+  windowMs: RESEND_RATE_LIMIT_WINDOW_MS,
+})

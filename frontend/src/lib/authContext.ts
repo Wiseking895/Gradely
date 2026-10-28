@@ -13,7 +13,7 @@ export type AuthContextValue = {
   status: AuthStatus
   user: SessionUser | null
   memberships: MembershipSummary[]
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<SessionUser>
   logout: () => Promise<void>
 }
 

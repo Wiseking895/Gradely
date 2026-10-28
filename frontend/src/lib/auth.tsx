@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await authApi.me().catch(() => null)
     setMemberships(me?.memberships ?? [])
     setStatus('authenticated')
+    return data.user
   }, [])
 
   const logout = useCallback(async () => {

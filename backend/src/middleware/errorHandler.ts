@@ -32,6 +32,15 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     console.error(error)
   }
 
+  const code =
+    status < 500 &&
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+      ? error.code
+      : undefined
+
   res.status(status).json({
     error: status >= 500 ? 'Internal server error' : 'Request failed',
     message:
@@ -40,5 +49,6 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
         : error instanceof Error
           ? error.message
           : 'Request failed',
+    ...(code ? { code } : {}),
   })
 }

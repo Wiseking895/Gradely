@@ -3,8 +3,10 @@
 React + TypeScript + Vite + Tailwind CSS for Gradely
 ("Smarter Reports. Better Learning."), deployed as a static Vercel project.
 
-> **Status:** Phase 1.5 (deployment-ready foundation). This is a placeholder
-> shell, not the final marketing homepage or school dashboard.
+> **Status:** Phase A (email-verification foundation). The homepage shell,
+> sign-in, self-service school registration (`/register-school`), and email
+> verification (`/verify-email`, including expired/used/invalid and resend
+> states) exist. The dashboard and later-phase school features are not built.
 
 ## Stack
 
@@ -52,6 +54,7 @@ npm install        # install dependencies
 npm run dev        # start dev server on http://localhost:5173
 npm run build      # type-check (tsc -b) and production build to dist/
 npm run preview    # preview the production build
+npm test           # Vitest + Testing Library component tests (jsdom)
 npm run lint       # ESLint
 npm run typecheck  # TypeScript project check (no emit)
 ```
@@ -88,7 +91,20 @@ frontend/
     App.tsx             # router setup
     index.css           # Tailwind + brand theme tokens
     lib/api.ts          # API service layer (VITE_API_URL)
+    lib/auth.tsx        # AuthProvider (session load/login/logout)
     vite-env.d.ts       # VITE_API_URL type declarations
-    components/         # shared UI pieces (BrandMark)
-    routes/             # HomePage (placeholder), NotFoundPage
+    components/         # shared UI (BrandMark, ResendVerificationForm)
+    routes/             # HomePage, LoginPage, RegisterSchoolPage,
+                        # VerifyEmailPage, NotFoundPage
+    test/setup.ts       # Vitest/jsdom + Testing Library setup
+  vitest.config.ts      # component test runner (jsdom)
 ```
+
+## Tests
+
+Component tests use Vitest + jsdom + React Testing Library and mock the API
+service layer. They cover registration validation/success/duplicate/delivery
+failure, verification success/expired/used/invalid/network retry, resend
+success and rate limiting, and post-login routing for unverified accounts.
+`npm test` runs them once. Browser responsive checks (320, 375, 390, 768,
+1024, 1440 px) are manual and are not part of `npm test`.
