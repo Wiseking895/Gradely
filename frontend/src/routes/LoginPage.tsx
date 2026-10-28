@@ -1,8 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { LogIn } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import BrandMark from '../components/BrandMark.tsx'
 import { isNetworkError, useAuth } from '../lib/authContext.ts'
+import {
+  DEFAULT_AUTHENTICATED_PATH,
+  safeReturnTo,
+} from '../lib/navigation.ts'
 
 type FormErrors = {
   email?: string
@@ -31,6 +35,7 @@ const labelClasses = 'mb-1.5 block text-sm font-medium text-brand-ink'
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -54,7 +59,12 @@ export default function LoginPage() {
       // Unverified administrators may sign in (so they can see verification
       // state and request a new link) but are sent to the verification screen
       // instead of the app; protected school routes still return 403.
-      navigate(user.emailVerified ? '/' : '/verify-email')
+      if (!user.emailVerified) {
+        navigate('/verify-email')
+        return
+      }
+      const returnTo = safeReturnTo(searchParams.get('returnTo'))
+      navigate(returnTo ?? DEFAULT_AUTHENTICATED_PATH)
     } catch (error) {
       if (isNetworkError(error)) {
         setErrors({

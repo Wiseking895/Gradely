@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, LogIn, LogOut, School, Sparkles } from 'lucide-react'
+import { BarChart3, LayoutDashboard, LogIn, LogOut, School, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import BrandMark from '../components/BrandMark.tsx'
 import { healthApi } from '../lib/api.ts'
@@ -104,6 +104,13 @@ export default function HomePage() {
                 <span className="hidden max-w-40 truncate rounded-full bg-brand-green/15 px-3 py-1 text-xs font-semibold text-brand-navy sm:inline">
                   {user.displayName}
                 </span>
+                <Link
+                  to="/dashboard"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand-navy px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
+                >
+                  <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
+                  Dashboard
+                </Link>
                 <button
                   type="button"
                   onClick={() => {

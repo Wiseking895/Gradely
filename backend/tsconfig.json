@@ -24,16 +24,7 @@
 
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "esModuleInterop": true,
-
-    /* Helmet 8 ships parallel ESM (.d.mts) and CJS (.d.cts) declarations with no
-       "types" condition in its exports map. If resolution ever lands on the CJS
-       declaration from an ESM file, TypeScript types the default import as the
-       non-callable module namespace (TS2349). Pin the type resolution to the ESM
-       declaration; emit and runtime behavior are unchanged. */
-    "paths": {
-      "helmet": ["./node_modules/helmet/index.d.mts"]
-    }
+    "esModuleInterop": true
   },
   "include": ["src"]
 }

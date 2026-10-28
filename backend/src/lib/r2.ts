@@ -1,4 +1,10 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { env } from '../config/env.ts'
 
@@ -23,6 +29,17 @@ export const R2_ALLOWED_MIME_TYPES = {
 
 export const R2_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
+/** School logos are a separate, stricter tenant-data category. */
+export const R2_SCHOOL_LOGO_MIME_TYPES = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+} as const
+
+export type SchoolLogoMimeType = keyof typeof R2_SCHOOL_LOGO_MIME_TYPES
+
+export const R2_SCHOOL_LOGO_MAX_SIZE_BYTES = 2 * 1024 * 1024 // 2 MB
+
 export type R2FileCategory =
   | 'school-logos'
   | 'pupil-photos'
@@ -37,7 +54,7 @@ export type R2UploadInput = {
 
 let r2Client: S3Client | undefined
 
-function isR2Configured(): boolean {
+export function isR2Configured(): boolean {
   return Boolean(
     env.R2_ACCOUNT_ID &&
       env.R2_ACCESS_KEY_ID &&
@@ -114,6 +131,68 @@ export function assertValidUpload(input: R2UploadInput): void {
   }
 }
 
+export function isSchoolLogoMimeType(
+  value: string,
+): value is SchoolLogoMimeType {
+  return value in R2_SCHOOL_LOGO_MIME_TYPES
+}
+
+export function extensionForSchoolLogoMimeType(
+  contentType: SchoolLogoMimeType,
+): string {
+  return R2_SCHOOL_LOGO_MIME_TYPES[contentType]
+}
+
+export function assertValidSchoolLogoUpload(input: {
+  contentType: string
+  fileSizeBytes: number
+}): asserts input is {
+  contentType: SchoolLogoMimeType
+  fileSizeBytes: number
+} {
+  if (!isSchoolLogoMimeType(input.contentType)) {
+    throw new Error(
+      `Unsupported school logo type "${input.contentType}". Allowed: ${Object.keys(R2_SCHOOL_LOGO_MIME_TYPES).join(', ')}`,
+    )
+  }
+  if (!Number.isInteger(input.fileSizeBytes) || input.fileSizeBytes <= 0) {
+    throw new Error('fileSizeBytes must be a positive integer')
+  }
+  if (input.fileSizeBytes > R2_SCHOOL_LOGO_MAX_SIZE_BYTES) {
+    throw new Error(
+      `School logo is too large. Maximum allowed size is ${R2_SCHOOL_LOGO_MAX_SIZE_BYTES} bytes (2 MB).`,
+    )
+  }
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Builds the one server-authoritative key format for school logos:
+ * school-logos/{schoolId}/{uploadId}.{png|jpg|webp}
+ *
+ * Clients never supply the key. Both IDs are validated UUIDs, so path
+ * traversal or cross-school prefixes are impossible.
+ */
+export function buildSchoolLogoObjectKey(input: {
+  schoolId: string
+  uploadId: string
+  contentType: SchoolLogoMimeType
+}): string {
+  if (!UUID_PATTERN.test(input.schoolId)) {
+    throw new Error('schoolId must be a UUID to build a school-logo key')
+  }
+  if (!UUID_PATTERN.test(input.uploadId)) {
+    throw new Error('uploadId must be a UUID to build a school-logo key')
+  }
+  return buildObjectKey({
+    category: 'school-logos',
+    schoolId: input.schoolId,
+    fileName: `${input.uploadId}.${extensionForSchoolLogoMimeType(input.contentType)}`,
+  })
+}
+
 /** Short-lived presigned download URL for a private object. */
 export async function presignR2Download(
   key: string,
@@ -139,5 +218,58 @@ export async function presignR2Upload(
       ContentType: options.contentType,
     }),
     { expiresIn: expiresInSeconds },
+  )
+}
+
+export type R2HeadResult = {
+  contentType: string | undefined
+  contentLength: number | undefined
+}
+
+function isObjectMissing(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+  const candidate = error as Error & {
+    name?: string
+    Code?: string
+    $metadata?: { httpStatusCode?: number }
+  }
+  return (
+    candidate.name === 'NotFound' ||
+    candidate.name === 'NoSuchKey' ||
+    candidate.Code === 'NotFound' ||
+    candidate.Code === 'NoSuchKey' ||
+    candidate.$metadata?.httpStatusCode === 404
+  )
+}
+
+/**
+ * Server-side verification used before persisting a client-uploaded object.
+ * Returns null only for a confirmed missing object; other R2 failures throw so
+ * callers can distinguish "not uploaded yet" from "storage unavailable".
+ */
+export async function headR2Object(key: string): Promise<R2HeadResult | null> {
+  try {
+    const result = await getR2Client().send(
+      new HeadObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key }),
+    )
+    return {
+      contentType: result.ContentType,
+      contentLength:
+        typeof result.ContentLength === 'number' ? result.ContentLength : undefined,
+    }
+  } catch (error) {
+    if (isObjectMissing(error)) {
+      return null
+    }
+    throw error
+  }
+}
+
+/** Deletes a private object. Callers perform best-effort cleanup and log safely. */
+export async function deleteR2Object(key: string): Promise<void> {
+  await getR2Client().send(
+    new DeleteObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key }),
   )
 }

@@ -14,9 +14,16 @@ import { createAuthRouter } from './routes/auth.ts'
 import { createSchoolsRouter } from './routes/schools.ts'
 import { createDbAuthService, type AuthService } from './services/auth.ts'
 import { createEmailService, type EmailService } from './services/email.ts'
+import {
+  createR2SchoolLogoStorage,
+  type SchoolLogoStorage,
+} from './services/schoolLogoStorage.ts'
+import { createDbSchoolService, type SchoolService } from './services/schools.ts'
 
 export type AppServices = {
   auth: AuthService
+  schools: SchoolService
+  logoStorage: SchoolLogoStorage
   loginRateLimiter: LoginRateLimiter
   resendRateLimiter: LoginRateLimiter
   emailService: EmailService
@@ -30,6 +37,9 @@ export type AppServices = {
  */
 export function createApp(services?: Partial<AppServices>): Express {
   const authService = services?.auth ?? createDbAuthService(() => getDbPool())
+  const schoolService =
+    services?.schools ?? createDbSchoolService(() => getDbPool())
+  const logoStorage = services?.logoStorage ?? createR2SchoolLogoStorage()
   const loginRateLimiter = services?.loginRateLimiter ?? defaultLoginRateLimiter
   const resendRateLimiter = services?.resendRateLimiter ?? defaultResendRateLimiter
   const emailService =
@@ -75,7 +85,14 @@ export function createApp(services?: Partial<AppServices>): Express {
       emailService,
     }),
   )
-  app.use('/api', createSchoolsRouter({ auth: authService }))
+  app.use(
+    '/api',
+    createSchoolsRouter({
+      auth: authService,
+      schools: schoolService,
+      logoStorage,
+    }),
+  )
 
   app.use(notFoundHandler)
   app.use(errorHandler)

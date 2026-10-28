@@ -1,7 +1,4 @@
-import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createDbPool } from '../src/lib/db.ts'
 import { hashPassword, verifyPassword } from '../src/lib/passwords.ts'
 import { authorizeSchoolAccess } from '../src/middleware/auth.ts'
 import {
@@ -10,6 +7,7 @@ import {
   DuplicateSchoolSlugError,
 } from '../src/services/auth.ts'
 import type { Pool } from 'pg'
+import { createTestDatabase, type TestDatabase } from './helpers/testDatabase.ts'
 
 /**
  * Schema + service integration tests against a real PostgreSQL database.
@@ -25,31 +23,16 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
 describe.skipIf(!testDatabaseUrl)('auth schema + service (integration)', () => {
   let pool: Pool
+  let database: TestDatabase
 
   beforeAll(async () => {
-    pool = createDbPool(testDatabaseUrl!)
-    await pool.query('DROP SCHEMA IF EXISTS public CASCADE')
-    await pool.query('CREATE SCHEMA public')
-    // Apply the migrations in order so the schema matches what the
-    // application actually expects (0002 adds users.email_verified_at and
-    // email_verification_tokens; 0003 adds the school/membership activation
-    // lifecycle and the one-live-token index).
-    for (const file of [
-      '0001_auth_foundation.sql',
-      '0002_email_verification.sql',
-      '0003_school_verification_lifecycle.sql',
-    ]) {
-      const sql = await readFile(
-        fileURLToPath(new URL(`../migrations/${file}`, import.meta.url)),
-        'utf8',
-      )
-      await pool.query(sql)
-    }
+    database = await createTestDatabase()
+    pool = database.pool
   }, 60_000)
 
   afterAll(async () => {
-    if (pool) {
-      await pool.end()
+    if (database) {
+      await database.close()
     }
   })
 

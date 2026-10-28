@@ -21,13 +21,18 @@ vi.mock('../../lib/api.ts', async (importOriginal) => {
   }
 })
 
-function renderLogin() {
+function renderLogin(initialEntry = '/login') {
   return render(
     <AuthProvider>
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<p>home screen</p>} />
+          <Route path="/dashboard" element={<p>dashboard screen</p>} />
+          <Route
+            path="/dashboard/schools/:schoolId"
+            element={<p>school dashboard</p>}
+          />
           <Route path="/verify-email" element={<p>verification screen</p>} />
         </Routes>
       </MemoryRouter>
@@ -73,7 +78,7 @@ describe('LoginPage verification routing', () => {
     )
   })
 
-  it('sends a verified user to the app', async () => {
+  it('sends a verified user to the dashboard', async () => {
     vi.mocked(authApi.login).mockResolvedValue({
       user: {
         id: 'user-1',
@@ -88,7 +93,45 @@ describe('LoginPage verification routing', () => {
     renderLogin()
     await signIn()
 
-    expect(await screen.findByText('home screen')).toBeInTheDocument()
+    expect(await screen.findByText('dashboard screen')).toBeInTheDocument()
+  })
+
+  it('returns a verified user to a safe internal returnTo path', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'ada@bright.test',
+        displayName: 'Ada Admin',
+        isPlatformAdmin: false,
+        emailVerified: true,
+      },
+      expiresAt: new Date().toISOString(),
+    })
+
+    renderLogin(
+      '/login?returnTo=%2Fdashboard%2Fschools%2F00000000-0000-4000-8000-000000000001',
+    )
+    await signIn()
+
+    expect(await screen.findByText('school dashboard')).toBeInTheDocument()
+  })
+
+  it('rejects an external returnTo and falls back to the dashboard', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'ada@bright.test',
+        displayName: 'Ada Admin',
+        isPlatformAdmin: false,
+        emailVerified: true,
+      },
+      expiresAt: new Date().toISOString(),
+    })
+
+    renderLogin('/login?returnTo=https%3A%2F%2Fevil.example%2Fphish')
+    await signIn()
+
+    expect(await screen.findByText('dashboard screen')).toBeInTheDocument()
   })
 
   it('links to public school registration', async () => {
