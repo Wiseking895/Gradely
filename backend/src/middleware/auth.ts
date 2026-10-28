@@ -131,7 +131,11 @@ export async function authorizeSchoolAccess(params: {
   }
 
   const membership = await auth.findActiveMembership(userId, schoolId)
-  if (membership) {
+  // An active membership alone is not enough: a suspended or archived school
+  // (or one still awaiting verification) grants no school-scoped access, even
+  // to members whose membership row is still 'active'. Platform administrators
+  // fall through to the explicit platform path below.
+  if (membership && membership.school.status === 'active') {
     if (allowedRoles && !allowedRoles.includes(membership.role)) {
       throw new HttpError(403, 'You do not have permission to perform this action')
     }

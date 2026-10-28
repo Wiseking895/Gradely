@@ -75,10 +75,10 @@ Defined as Tailwind theme tokens in `src/index.css`:
 
 ## Logo
 
-The official Gradely logo image is not present in this repository yet.
-`src/components/BrandMark.tsx` renders a typographic wordmark placeholder.
-Drop the official asset into `src/assets/` and update `BrandMark` when it
-becomes available.
+The official logo asset lives at `src/images/wiseGrade.jpeg` and is imported
+through Vite. `src/components/BrandMark.tsx` renders the full lockup with
+`object-contain` at a compact header size or a larger auth-page size.
+`index.html` uses the same file for the favicon and Apple touch icon.
 
 ## Structure
 
@@ -107,4 +107,6 @@ service layer. They cover registration validation/success/duplicate/delivery
 failure, verification success/expired/used/invalid/network retry, resend
 success and rate limiting, and post-login routing for unverified accounts.
 `npm test` runs them once. Browser responsive checks (320, 375, 390, 768,
-1024, 1440 px) are manual and are not part of `npm test`.
+1024, 1440 px) are manual and are not part of `npm test`. There is no
+automated end-to-end (Playwright/Cypress) or browser CI suite yet; run the
+manual checks against a real build before a release.

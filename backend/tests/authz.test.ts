@@ -16,6 +16,7 @@ describe('school isolation (HTTP)', () => {
   let agentA: ReturnType<typeof request.agent>
   let agentB: ReturnType<typeof request.agent>
   let agentPlatform: ReturnType<typeof request.agent>
+  let userA: { id: string }
   let schoolA: { id: string }
   let schoolB: { id: string }
 
@@ -23,7 +24,7 @@ describe('school isolation (HTTP)', () => {
     auth = createFakeAuthService()
     app = createApp({ auth })
 
-    const userA = await auth.seedUser({
+    userA = await auth.seedUser({
       email: 'a@school.test',
       password: PASSWORD,
       displayName: 'User A',
@@ -111,6 +112,72 @@ describe('school isolation (HTTP)', () => {
     const mine = await agentPlatform.get('/api/schools/mine')
     expect(mine.status).toBe(200)
     expect(mine.body.memberships).toHaveLength(0)
+  })
+
+  it.each(['suspended', 'archived'] as const)(
+    'denies an active member access to a %s school (uniform 404)',
+    async (status) => {
+      const school = auth.seedSchool({ name: `${status} school`, status })
+      auth.seedMembership({
+        userId: userA.id,
+        school,
+        role: 'school_admin',
+        status: 'active',
+      })
+
+      const response = await agentA.get(`/api/schools/${school.id}`)
+      expect(response.status).toBe(404)
+      expect(response.body.message).toBe('School not found')
+      expect(JSON.stringify(response.body)).not.toContain(school.name)
+    },
+  )
+
+  it('denies a teacher access to another school', async () => {
+    const response = await agentB.get(`/api/schools/${schoolA.id}`)
+    expect(response.status).toBe(404)
+    expect(response.body.message).toBe('School not found')
+  })
+
+  it('denies a teacher whose school is suspended', async () => {
+    const school = auth.seedSchool({ name: 'Suspended Teacher School', status: 'suspended' })
+    auth.seedMembership({ userId: userA.id, school, role: 'teacher', status: 'active' })
+
+    const response = await agentA.get(`/api/schools/${school.id}`)
+    expect(response.status).toBe(404)
+  })
+
+  it('still lets an explicit platform admin read suspended and archived schools', async () => {
+    for (const status of ['suspended', 'archived'] as const) {
+      const school = auth.seedSchool({ name: `${status} review school`, status })
+      const response = await agentPlatform.get(`/api/schools/${school.id}`)
+      expect(response.status).toBe(200)
+      expect(response.body.role).toBe('platform_admin')
+      expect(response.body.school).toMatchObject({ id: school.id, status })
+    }
+  })
+
+  it('uses the explicit platform path when a platform admin also has a membership in an inactive school', async () => {
+    const school = auth.seedSchool({ name: 'Inactive membership school', status: 'suspended' })
+    const both = await auth.seedUser({
+      email: 'both@gradely.test',
+      password: PASSWORD,
+      displayName: 'Both Roles',
+      isPlatformAdmin: true,
+    })
+    auth.seedMembership({
+      userId: both.id,
+      school,
+      role: 'school_admin',
+      status: 'active',
+    })
+    const bothAgent = request.agent(app)
+    await bothAgent
+      .post('/api/auth/login')
+      .send({ email: 'both@gradely.test', password: PASSWORD })
+
+    const response = await bothAgent.get(`/api/schools/${school.id}`)
+    expect(response.status).toBe(200)
+    expect(response.body.role).toBe('platform_admin')
   })
 })
 

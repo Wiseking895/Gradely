@@ -369,6 +369,7 @@ export function createFakeAuthService(): FakeAuthService {
       // suspended/archived schools are never reactivated.
       for (const membership of membershipsByUser.get(user.id) ?? []) {
         if (
+          membership.role === 'school_admin' &&
           membership.status === 'pending' &&
           membership.school.status === 'pending_verification'
         ) {

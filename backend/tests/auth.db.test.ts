@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createDbPool } from '../src/lib/db.ts'
 import { hashPassword, verifyPassword } from '../src/lib/passwords.ts'
+import { authorizeSchoolAccess } from '../src/middleware/auth.ts'
 import {
   createDbAuthService,
   DuplicateEmailError,
@@ -220,6 +221,24 @@ describe.skipIf(!testDatabaseUrl)('auth schema + service (integration)', () => {
       }),
     ).rejects.toBeInstanceOf(DuplicateSchoolSlugError)
 
+    // The failed slug attempt must not leave a partial user, school, or
+    // membership behind either.
+    const orphanUser = await pool.query('SELECT 1 FROM users WHERE email = $1', [
+      'other@registered.test',
+    ])
+    expect(orphanUser.rowCount).toBe(0)
+    const orphanName = await pool.query('SELECT 1 FROM schools WHERE name = $1', [
+      'Dup Slug School',
+    ])
+    expect(orphanName.rowCount).toBe(0)
+    const orphanMembership = await pool.query(
+      `SELECT 1 FROM school_memberships m
+       JOIN users u ON u.id = m.user_id
+       WHERE u.email = $1`,
+      ['other@registered.test'],
+    )
+    expect(orphanMembership.rowCount).toBe(0)
+
     // Verification lifecycle: the token marks the user verified once and
     // activates both the founding membership and the pending school. A
     // replay of the same raw token reports 'used'.
@@ -262,6 +281,36 @@ describe.skipIf(!testDatabaseUrl)('auth schema + service (integration)', () => {
       auth.consumeEmailVerificationToken(fresh.token),
     ).resolves.toMatchObject({ status: 'verified' })
   }, 60_000)
+
+  it('cannot redeem the same verification token twice when redemptions race', async () => {
+    const auth = createDbAuthService(() => pool)
+    const passwordHash = await hashPassword('Integration-Pass7!')
+    const created = await auth.registerSchoolWithAdmin({
+      schoolName: 'Verify Race School',
+      schoolSlug: 'verify-race-school',
+      email: 'verify-race@registered.test',
+      displayName: 'Vera Race',
+      passwordHash,
+    })
+
+    const { token } = await auth.createEmailVerificationToken(created.userId)
+    const outcomes = await Promise.all([
+      auth.consumeEmailVerificationToken(token),
+      auth.consumeEmailVerificationToken(token),
+    ])
+
+    expect(outcomes.filter((outcome) => outcome.status === 'verified')).toHaveLength(1)
+    expect(outcomes.filter((outcome) => outcome.status === 'used')).toHaveLength(1)
+    const user = await auth.findUserByEmail('verify-race@registered.test')
+    expect(user?.emailVerified).toBe(true)
+    const stillLive = await pool.query(
+      `SELECT count(*)::int AS live
+       FROM email_verification_tokens
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [created.userId],
+    )
+    expect(stillLive.rows[0].live).toBe(0)
+  }, 30_000)
 
   it('keeps at most one live token when resends race', async () => {
     const auth = createDbAuthService(() => pool)
@@ -328,6 +377,104 @@ describe.skipIf(!testDatabaseUrl)('auth schema + service (integration)', () => {
     await expect(
       auth.findActiveMembership(created.userId, created.schoolId),
     ).resolves.toBeNull()
+  }, 30_000)
+
+  it('verification activates only the administrator’s own pending school membership', async () => {
+    const auth = createDbAuthService(() => pool)
+    const passwordHash = await hashPassword('Integration-Pass6!')
+    const created = await auth.registerSchoolWithAdmin({
+      schoolName: 'Admin Activation School',
+      schoolSlug: 'admin-activation-school',
+      email: 'activation@registered.test',
+      displayName: 'Ada Activation',
+      passwordHash,
+    })
+    // A pending teacher membership in another not-yet-verified school must not
+    // be activated (or its school) by this account's email verification.
+    const otherSchool = await pool.query(
+      `INSERT INTO schools (name, slug, status)
+       VALUES ('Other Pending School', 'other-pending-school', 'pending_verification')
+       RETURNING id`,
+    )
+    const otherSchoolId = otherSchool.rows[0].id as string
+    await pool.query(
+      `INSERT INTO school_memberships (school_id, user_id, role, status)
+       VALUES ($1, $2, 'teacher', 'pending')`,
+      [otherSchoolId, created.userId],
+    )
+
+    const { token } = await auth.createEmailVerificationToken(created.userId)
+    await expect(
+      auth.consumeEmailVerificationToken(token),
+    ).resolves.toMatchObject({ status: 'verified' })
+
+    const ownSchool = await pool.query('SELECT status FROM schools WHERE id = $1', [
+      created.schoolId,
+    ])
+    expect(ownSchool.rows[0].status).toBe('active')
+    await expect(
+      auth.findActiveMembership(created.userId, created.schoolId),
+    ).resolves.toMatchObject({ role: 'school_admin' })
+
+    const otherSchoolAfter = await pool.query(
+      'SELECT status FROM schools WHERE id = $1',
+      [otherSchoolId],
+    )
+    expect(otherSchoolAfter.rows[0].status).toBe('pending_verification')
+    const otherMembership = await pool.query(
+      'SELECT status FROM school_memberships WHERE school_id = $1 AND user_id = $2',
+      [otherSchoolId, created.userId],
+    )
+    expect(otherMembership.rows[0].status).toBe('pending')
+  }, 30_000)
+
+  it('denies active memberships access to suspended/archived schools (DB-backed authorization)', async () => {
+    const auth = createDbAuthService(() => pool)
+    const passwordHash = await hashPassword('Integration-Pass5!')
+    const school = await pool.query(
+      `INSERT INTO schools (name, slug, status)
+       VALUES ('Authorization School', 'authorization-school', 'active')
+       RETURNING id`,
+    )
+    const schoolId = school.rows[0].id as string
+    const user = await pool.query(
+      `INSERT INTO users (email, display_name, password_hash, email_verified_at)
+       VALUES ('authorization@school.test', 'Auth User', $1, now())
+       RETURNING id`,
+      [passwordHash],
+    )
+    const userId = user.rows[0].id as string
+    await pool.query(
+      `INSERT INTO school_memberships (school_id, user_id, role, status)
+       VALUES ($1, $2, 'school_admin', 'active')`,
+      [schoolId, userId],
+    )
+
+    // While active, the membership grants access.
+    await expect(
+      authorizeSchoolAccess({ auth, userId, isPlatformAdmin: false, schoolId }),
+    ).resolves.toMatchObject({ role: 'school_admin' })
+
+    for (const status of ['suspended', 'archived']) {
+      await pool.query('UPDATE schools SET status = $1 WHERE id = $2', [
+        status,
+        schoolId,
+      ])
+      await expect(
+        authorizeSchoolAccess({ auth, userId, isPlatformAdmin: false, schoolId }),
+      ).rejects.toMatchObject({ status: 404 })
+    }
+
+    // Explicit platform-administrator access still works for an inactive
+    // school (needed for oversight), and is the only way through.
+    const platformAccess = await authorizeSchoolAccess({
+      auth,
+      userId,
+      isPlatformAdmin: true,
+      schoolId,
+      allowPlatformAdmin: true,
+    })
+    expect(platformAccess.role).toBe('platform_admin')
   }, 30_000)
 
   it('reports expired verification tokens as expired (real clock)', async () => {

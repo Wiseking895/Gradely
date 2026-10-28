@@ -484,6 +484,7 @@ export function createDbAuthService(getPool: () => Pool): AuthService {
            SET status = 'active'
            FROM schools s
            WHERE m.user_id = $1
+             AND m.role = 'school_admin'
              AND m.status = 'pending'
              AND s.id = m.school_id
              AND s.status = 'pending_verification'`,
@@ -494,7 +495,10 @@ export function createDbAuthService(getPool: () => Pool): AuthService {
            SET status = 'active'
            WHERE status = 'pending_verification'
              AND id IN (
-               SELECT school_id FROM school_memberships WHERE user_id = $1
+               SELECT school_id FROM school_memberships
+               WHERE user_id = $1
+                 AND role = 'school_admin'
+                 AND status = 'active'
              )`,
           [row.user_id],
         )

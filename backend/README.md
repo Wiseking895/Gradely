@@ -108,9 +108,13 @@ Design (deliberately small, no auth framework, no JWT):
 - **Authorization** — `src/middleware/auth.ts`. `requireAuth` loads the
   session; `requirePlatformAdmin` is explicit platform-level power (never a
   membership shortcut); `authorizeSchoolAccess()` resolves school access
-  **only** from the user's verified memberships — a school ID in a request
-  is just a lookup key. Missing schools and unauthorized schools both
-  return an identical 404 so IDs cannot be enumerated.
+  **only** from the user's active membership **and** an `active` school —
+  a school ID in a request is just a lookup key. Suspended/archived schools
+  are denied even to members whose membership row is still active.
+  Platform administrators may still read those schools through the explicit
+  `allowPlatformAdmin` path (oversight), never through a membership. Missing
+  schools and unauthorized schools both return an identical 404 so IDs
+  cannot be enumerated.
 - **Bootstrap** — public self-service registration creates a *school
   administrator* only (`POST /api/auth/register-school`); it can never grant
   platform-admin rights. The first platform administrator is still created
@@ -134,8 +138,11 @@ Design (deliberately small, no auth framework, no JWT):
 - **Email transport** — `EmailService` is provider-independent
   (`src/services/email.ts`). Development logs the message, tests use an
   in-memory outbox, and production defaults to `unavailable` (delivery fails
-  loudly) until a real vendor adapter is approved. Raw tokens are never
-  logged.
+  loudly) until a real vendor adapter is approved. Request/error handlers
+  never log raw tokens, and production logs never include the body. The
+  development-only `log` transport prints the message body (including the
+  clickable link) to the local console so developers can complete the flow;
+  `EMAIL_TRANSPORT` must never be `log` in production.
 
 API surface added this phase:
 

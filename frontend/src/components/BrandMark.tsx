@@ -1,25 +1,32 @@
-import { GraduationCap } from 'lucide-react'
+import logo from '../images/wiseGrade.jpeg'
 
 type BrandMarkProps = {
   className?: string
+  variant?: 'header' | 'auth'
+}
+
+const sizeClasses: Record<NonNullable<BrandMarkProps['variant']>, string> = {
+  header: 'h-14 w-14 sm:h-16 sm:w-16',
+  auth: 'h-32 w-32 sm:h-36 sm:w-36',
 }
 
 /**
- * Text wordmark placeholder. The official Gradely logo asset is not present in
- * the project yet, so this renders a typographic mark instead of an image.
+ * Official project logo lockup. The source image is square, so `object-contain`
+ * preserves its proportions at both the compact header size and the larger
+ * auth-page size.
  */
-export default function BrandMark({ className = '' }: BrandMarkProps) {
+export default function BrandMark({
+  className = '',
+  variant = 'auth',
+}: BrandMarkProps) {
   return (
-    <div className={`flex items-center gap-2.5 ${className}`}>
-      <span
-        aria-hidden="true"
-        className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-navy text-white"
-      >
-        <GraduationCap className="h-5 w-5" strokeWidth={2} />
-      </span>
-      <span className="text-xl font-bold tracking-tight text-brand-navy">
-        Gradely
-      </span>
-    </div>
+    <img
+      src={logo}
+      alt="Gradely"
+      width={1254}
+      height={1254}
+      decoding="async"
+      className={`${sizeClasses[variant]} shrink-0 object-contain ${className}`}
+    />
   )
 }

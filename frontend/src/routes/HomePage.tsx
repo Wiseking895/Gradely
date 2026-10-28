@@ -75,7 +75,7 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6">
-          <BrandMark />
+          <BrandMark variant="header" />
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${apiStatusStyle.className}`}
