@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { assertScratchDatabaseUrl } from '../lib/scratchDatabase.ts'
 
 /** Treats missing or blank values as unset; everything else must be non-empty. */
 const optionalEnvString = z.preprocess(
@@ -11,6 +12,11 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
+  // Local execution mode. `scratch` requires explicitly selected scratch-only
+  // environment values; it never changes production behavior unless set.
+  GRADELY_ENV: z
+    .enum(['development', 'test', 'scratch', 'production'])
+    .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
@@ -22,6 +28,12 @@ const envSchema = z.object({
   // (npm run db:migrate) — Neon's recommended connection for schema changes.
   // Falls back to DATABASE_URL when unset.
   DIRECT_URL: optionalEnvString,
+
+  // Scratch-only local targets. These must never contain production values.
+  // Scratch execution selects SCRATCH_DATABASE_URL explicitly; migrations may
+  // use MIGRATION_DATABASE_URL when a caller wants a separate target variable.
+  SCRATCH_DATABASE_URL: optionalEnvString,
+  MIGRATION_DATABASE_URL: optionalEnvString,
 
   // Email transport for the verification flow (src/services/email.ts).
   // Unset resolves to: production -> 'unavailable' (fail loudly, no vendor
@@ -44,6 +56,38 @@ if (!parsed.success) {
     .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join('\n')
   throw new Error(`Invalid environment configuration:\n${issues}`)
+}
+
+// In explicit scratch mode every configured database URL must be a safe local
+// scratch target. This prevents a partially overridden shell from mixing
+// production Neon values into a scratch run. Test-only environments may contain
+// just TEST_DATABASE_URL, so presence is not required here.
+if (parsed.data.GRADELY_ENV === 'scratch') {
+  const candidates: Array<[string, string | undefined]> = [
+    ['DATABASE_URL', parsed.data.DATABASE_URL],
+    ['DIRECT_URL', parsed.data.DIRECT_URL],
+    ['SCRATCH_DATABASE_URL', parsed.data.SCRATCH_DATABASE_URL],
+    ['MIGRATION_DATABASE_URL', parsed.data.MIGRATION_DATABASE_URL],
+  ]
+
+  for (const [name, value] of candidates) {
+    if (!value) {
+      continue
+    }
+
+    try {
+      assertScratchDatabaseUrl(value, {
+        mode: 'scratch',
+        nodeEnv: parsed.data.NODE_ENV,
+        env: process.env,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`Invalid ${name} in scratch mode: ${message}`, {
+        cause: error,
+      })
+    }
+  }
 }
 
 export const env = {

@@ -1,6 +1,12 @@
-import 'dotenv/config'
+import './config/loadEnv.ts'
 import { createApp } from './app.ts'
 import { env } from './config/env.ts'
+
+if (env.GRADELY_ENV === 'scratch' && !env.DATABASE_URL) {
+  throw new Error(
+    'GRADELY_ENV=scratch requires DATABASE_URL in the selected scratch environment file',
+  )
+}
 
 const app = createApp()
 

@@ -3,6 +3,12 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type { Pool } from 'pg'
 import { createDbPool } from '../../src/lib/db.ts'
+import {
+  assertConnectedScratchTarget,
+  assertScratchDatabaseUrl,
+  describeDatabaseTarget,
+  type DatabaseTarget,
+} from '../../src/lib/scratchDatabase.ts'
 
 /**
  * Shared migration-aware helper for database integration tests.
@@ -11,9 +17,11 @@ import { createDbPool } from '../../src/lib/db.ts'
  *  - TEST_DATABASE_URL is REQUIRED. There is no fallback to DATABASE_URL or
  *    DIRECT_URL, so a forgotten variable can never silently point tests at the
  *    application/production database.
- *  - The resolved database name must look disposable (test/scratch/tmp), and
- *    NODE_ENV=production is rejected.
- *  - The public schema is dropped and recreated, so the target is destroyed.
+ *  - The URL must pass the shared scratch validator: explicit test mode,
+ *    loopback host, exact scratch database name, no target overrides, and no
+ *    collision with a production-configured DATABASE_URL/DIRECT_URL.
+ *  - The connected database, effective role, and server address are verified
+ *    BEFORE the public schema is dropped and recreated.
  *
  * The helper discovers every migration in backend/migrations/ at runtime and
  * applies it in ascending filename order. It never hard-codes the list.
@@ -35,24 +43,12 @@ export async function loadMigrationFiles(): Promise<string[]> {
   return entries.filter((name) => MIGRATION_FILE_PATTERN.test(name)).sort()
 }
 
-function assertDisposableScratchTarget(connectionString: string): void {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Refusing to run destructive database tests with NODE_ENV=production')
-  }
-
-  let parsed: URL
-  try {
-    parsed = new URL(connectionString)
-  } catch {
-    throw new Error('TEST_DATABASE_URL is not a valid PostgreSQL connection URL')
-  }
-
-  const databaseName = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
-  if (!/(test|scratch|tmp)/i.test(databaseName)) {
-    throw new Error(
-      `Refusing to reset database "${databaseName || '(empty)'}": the database name must contain "test", "scratch", or "tmp"`,
-    )
-  }
+function requireScratchTarget(connectionString: string): DatabaseTarget {
+  return assertScratchDatabaseUrl(connectionString, {
+    mode: 'test',
+    nodeEnv: process.env.NODE_ENV,
+    env: process.env,
+  })
 }
 
 async function applyMigrations(pool: Pool, files: string[]): Promise<void> {
@@ -98,7 +94,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     )
   }
 
-  assertDisposableScratchTarget(connectionString)
+  const target = requireScratchTarget(connectionString)
 
   const files = await loadMigrationFiles()
   if (files.length === 0) {
@@ -107,6 +103,10 @@ export async function createTestDatabase(): Promise<TestDatabase> {
 
   const pool = createDbPool(connectionString)
   try {
+    // Verify the database and role actually reached before any destructive SQL.
+    await assertConnectedScratchTarget(pool, target)
+    console.log(`Test database target: ${describeDatabaseTarget(target)}`)
+
     await pool.query('DROP SCHEMA IF EXISTS public CASCADE')
     await pool.query('CREATE SCHEMA public')
     await applyMigrations(pool, files)

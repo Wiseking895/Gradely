@@ -12,16 +12,15 @@ import { createTestDatabase, type TestDatabase } from './helpers/testDatabase.ts
 /**
  * Schema + service integration tests against a real PostgreSQL database.
  *
- * GATED: runs only when TEST_DATABASE_URL points to a **scratch** database
- * (never production Neon). The target schema is dropped and recreated, so
- * only ever point this at a disposable database.
+ * REQUIRES TEST_DATABASE_URL pointing to a **scratch** database (never
+ * production Neon). The target schema is dropped and recreated, so only ever
+ * point this at a disposable database. Missing or unsafe configuration fails
+ * the suite explicitly; there is no silent skip.
  *
- *   TEST_DATABASE_URL=postgresql://... npm test
+ *   TEST_DATABASE_URL=postgresql://... npm run test:db
  */
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-describe.skipIf(!testDatabaseUrl)('auth schema + service (integration)', () => {
+describe('auth schema + service (integration)', () => {
   let pool: Pool
   let database: TestDatabase
 

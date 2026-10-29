@@ -11,5 +11,8 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    // Runs before test modules import src/, stripping ambient production
+    // database/R2 variables so no test can initialize a production client.
+    setupFiles: ['./tests/setupEnv.ts'],
   },
 })

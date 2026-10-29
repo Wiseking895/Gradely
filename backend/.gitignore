@@ -10,6 +10,10 @@ coverage/
 .env.*
 !.env.example
 
+# Scratch-only local env files (prefer a path outside the repo)
+scratch.env
+*.scratch.env
+
 # Logs
 *.log
 npm-debug.log*

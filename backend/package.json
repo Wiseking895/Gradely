@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude \"**/*.db.test.ts\"",
+    "test:db": "vitest run tests/auth.db.test.ts tests/schools.db.test.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:migrate:status": "tsx src/scripts/migrate.ts --status",
     "admin:create": "tsx src/scripts/createPlatformAdmin.ts"

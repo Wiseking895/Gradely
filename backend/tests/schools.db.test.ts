@@ -7,9 +7,7 @@ import {
 } from '../src/services/schools.ts'
 import { createTestDatabase, type TestDatabase } from './helpers/testDatabase.ts'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-describe.skipIf(!testDatabaseUrl)('school management schema + service (integration)', () => {
+describe('school management schema + service (integration)', () => {
   let database: TestDatabase
   let pool: Pool
   let schools: SchoolService
