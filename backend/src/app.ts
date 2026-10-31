@@ -2,6 +2,7 @@ import cors from 'cors'
 import express, { type Express } from 'express'
 import helmet from 'helmet'
 import { env } from './config/env.ts'
+import { resolveSmtpConfig } from './config/email.ts'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.ts'
 import {
   defaultLoginRateLimiter,
@@ -42,9 +43,19 @@ export function createApp(services?: Partial<AppServices>): Express {
   const logoStorage = services?.logoStorage ?? createR2SchoolLogoStorage()
   const loginRateLimiter = services?.loginRateLimiter ?? defaultLoginRateLimiter
   const resendRateLimiter = services?.resendRateLimiter ?? defaultResendRateLimiter
+  // Resolve SMTP settings only when selected. Malformed values throw at boot
+  // (a broken config must never look healthy); missing credentials resolve as
+  // `incomplete` and the factory degrades to the unavailable transport.
+  const smtp =
+    env.emailTransport === 'smtp'
+      ? resolveSmtpConfig(process.env, { nodeEnv: env.NODE_ENV })
+      : undefined
   const emailService =
     services?.emailService ??
-    createEmailService(env.emailTransport, { isProduction: env.isProduction })
+    createEmailService(env.emailTransport, {
+      isProduction: env.isProduction,
+      smtp,
+    })
 
   const app = express()
 
